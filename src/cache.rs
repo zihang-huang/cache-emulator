@@ -1,7 +1,3 @@
-use std::io::Write;
-
-use anyhow::{Result, anyhow};
-
 use crate::trace::{AccessKind, TraceAccess};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,12 +9,11 @@ pub enum PredictionStrategy {
 
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
-    pub cache_size: usize,
-    pub block_size: usize,
-    pub associativity: usize,
+    pub cache_size: usize,    // in Bytes
+    pub block_size: usize,    // in Bytes
+    pub associativity: usize, // set to 1 for Direct-Mapped
     pub victim_cache_entries: usize,
     pub prediction: PredictionStrategy,
-    pub multi_column_overrides: Option<usize>,
 }
 
 impl Default for CacheConfig {
@@ -29,7 +24,6 @@ impl Default for CacheConfig {
             associativity: 4,
             victim_cache_entries: 0,
             prediction: PredictionStrategy::None,
-            multi_column_overrides: None,
         }
     }
 }
@@ -37,24 +31,6 @@ impl Default for CacheConfig {
 impl CacheConfig {
     pub fn num_sets(&self) -> usize {
         (self.cache_size / self.block_size).max(1) / self.associativity.max(1)
-    }
-
-    pub fn validate(&self) -> Result<()> {
-        if self.block_size == 0 {
-            return Err(anyhow!("Block size must be greater than 0"));
-        }
-        if self.associativity == 0 {
-            return Err(anyhow!("Associativity must be greater than 0"));
-        }
-        if self.cache_size == 0 {
-            return Err(anyhow!("Cache size must be greater than 0"));
-        }
-        if self.cache_size % (self.block_size * self.associativity) != 0 {
-            return Err(anyhow!(
-                "Cache size must be divisible by block_size * associativity"
-            ));
-        }
-        Ok(())
     }
 }
 
@@ -160,8 +136,7 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new(config: CacheConfig) -> Result<Self> {
-        config.validate()?;
+    pub fn new(config: CacheConfig) -> Self {
         let num_sets = config.num_sets();
         let sets = (0..num_sets)
             .map(|_| CacheSet::new(config.associativity))
@@ -173,14 +148,12 @@ impl Cache {
         };
         let prediction_mode = config.prediction;
         let multi_column = match prediction_mode {
-            PredictionStrategy::MultiColumn => Some(MultiColumnState::new(
-                num_sets,
-                config.associativity,
-                config.multi_column_overrides,
-            )),
+            PredictionStrategy::MultiColumn => {
+                Some(MultiColumnState::new(num_sets, config.associativity))
+            }
             _ => None,
         };
-        Ok(Self {
+        Self {
             config,
             sets,
             victim,
@@ -188,34 +161,18 @@ impl Cache {
             multi_column,
             global_tick: 1,
             num_sets,
-        })
+        }
     }
 
-    pub fn run_trace(
-        &mut self,
-        trace: &[TraceAccess],
-        miss_logger: Option<&mut dyn Write>,
-    ) -> CacheStats {
+    pub fn run_trace(&mut self, trace: &[TraceAccess]) -> CacheStats {
         let mut stats = CacheStats::new(self.prediction_mode);
-        if let Some(writer) = miss_logger {
-            for (idx, access) in trace.iter().enumerate() {
-                self.process_access(access, idx as u64, Some(&mut *writer), &mut stats);
-            }
-        } else {
-            for (idx, access) in trace.iter().enumerate() {
-                self.process_access(access, idx as u64, None, &mut stats);
-            }
+        for access in trace {
+            self.process_access(access, &mut stats);
         }
         stats
     }
 
-    fn process_access(
-        &mut self,
-        access: &TraceAccess,
-        seq: u64,
-        mut miss_logger: Option<&mut dyn Write>,
-        stats: &mut CacheStats,
-    ) {
+    fn process_access(&mut self, access: &TraceAccess, stats: &mut CacheStats) {
         stats.accesses += 1;
         match access.kind {
             AccessKind::Read => stats.reads += 1,
@@ -242,6 +199,7 @@ impl Cache {
         // Cache miss - check victim if enabled
         let mut incoming_line = None;
         if let Some(victim) = self.victim.as_mut() {
+            // If have victim cache extention
             if let Some(mut line) = victim.take(block_address) {
                 line.last_used = self.global_tick;
                 incoming_line = Some(line);
@@ -259,15 +217,6 @@ impl Cache {
             self.update_multi_column_on_hit(set_index, block_address, inserted_idx);
             stats.hits += 1;
             stats.victim_hits += 1;
-            if let Some(writer) = miss_logger.as_deref_mut() {
-                let _ = writeln!(
-                    writer,
-                    "{}\t{}\t0x{address:016X}\tvictim-hit",
-                    seq,
-                    access.kind,
-                    address = access.address
-                );
-            }
         } else {
             // true miss, fetch from memory
             let is_write = matches!(access.kind, AccessKind::Write);
@@ -281,15 +230,6 @@ impl Cache {
             }
             self.update_multi_column_on_hit(set_index, block_address, inserted_idx);
             stats.misses += 1;
-            if let Some(writer) = miss_logger.as_deref_mut() {
-                let _ = writeln!(
-                    writer,
-                    "{}\t{}\t0x{address:016X}\tmemory-miss",
-                    seq,
-                    access.kind,
-                    address = access.address
-                );
-            }
         }
         self.global_tick += 1;
     }
@@ -549,16 +489,14 @@ struct MultiColumnState {
 }
 
 impl MultiColumnState {
-    fn new(num_sets: usize, ways: usize, override_columns: Option<usize>) -> Self {
+    fn new(num_sets: usize, ways: usize) -> Self {
         let default_columns = match ways {
             0..=1 => 1,
             2..=4 => 2,
             5..=8 => 4,
             _ => 8,
         };
-        let num_columns = override_columns
-            .unwrap_or(default_columns)
-            .clamp(1, ways.max(1));
+        let num_columns = default_columns.clamp(1, ways.max(1));
         Self {
             bits: vec![0u32; num_sets * num_columns],
             num_sets,

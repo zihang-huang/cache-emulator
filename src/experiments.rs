@@ -1,7 +1,4 @@
 use std::fmt;
-
-use anyhow::Result;
-
 use crate::{
     cache::{Cache, CacheConfig, CacheStats, PredictionStrategy},
     trace::TraceFile,
@@ -9,12 +6,12 @@ use crate::{
 
 #[derive(Clone)]
 pub struct ScenarioConfig {
-    pub label: String,
+    pub label: String, // Label to be printed for the Result
     pub config: CacheConfig,
 }
 
 pub struct ScenarioResult {
-    pub label: String,
+    pub label: String, // Label to be printed for the Result
     pub trace_results: Vec<TraceResult>,
 }
 
@@ -41,13 +38,13 @@ impl fmt::Display for ScenarioResult {
 pub fn run_scenarios(
     traces: &[TraceFile],
     scenarios: &[ScenarioConfig],
-) -> Result<Vec<ScenarioResult>> {
+) -> Vec<ScenarioResult> {
     let mut results = Vec::new();
     for scenario in scenarios {
         let mut per_trace = Vec::new();
         for trace in traces {
-            let mut cache = Cache::new(scenario.config.clone())?;
-            let stats = cache.run_trace(&trace.entries, None);
+            let mut cache = Cache::new(scenario.config.clone());
+            let stats = cache.run_trace(&trace.entries);
             per_trace.push(TraceResult {
                 trace_name: trace.name.clone(),
                 stats,
@@ -58,7 +55,7 @@ pub fn run_scenarios(
             trace_results: per_trace,
         });
     }
-    Ok(results)
+    results
 }
 
 pub fn direct_mapped(base: &CacheConfig) -> ScenarioConfig {
