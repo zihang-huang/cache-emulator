@@ -1,0 +1,128 @@
+Loaded 4 trace files.
+
+== Direct-Mapped ==
+  Direct-Mapped
+    PDF.trace      hit  11.36% miss  88.64%
+    game.trace     hit  14.43% miss  85.57%
+    office.trace   hit  38.25% miss  61.75%
+    photo.trace    hit   8.41% miss  91.59%
+
+== Set-Associative Sweep ==
+  2-way SA
+    PDF.trace      hit  11.00% miss  89.00%
+    game.trace     hit  14.97% miss  85.03%
+    office.trace   hit  45.52% miss  54.48%
+    photo.trace    hit   5.47% miss  94.53%
+  4-way SA
+    PDF.trace      hit  10.68% miss  89.32%
+    game.trace     hit  14.96% miss  85.04%
+    office.trace   hit  48.88% miss  51.12%
+    photo.trace    hit   5.23% miss  94.77%
+  8-way SA
+    PDF.trace      hit  11.50% miss  88.50%
+    game.trace     hit  16.92% miss  83.08%
+    office.trace   hit  50.91% miss  49.09%
+    photo.trace    hit   5.33% miss  94.67%
+  16-way SA
+    PDF.trace      hit  11.95% miss  88.05%
+    game.trace     hit  17.75% miss  82.25%
+    office.trace   hit  51.66% miss  48.34%
+    photo.trace    hit   5.44% miss  94.56%
+
+== Block Size Sweep (4-way) ==
+  Block 8B
+    PDF.trace      hit  28.40% miss  71.60%
+    game.trace     hit  34.27% miss  65.73%
+    office.trace   hit  61.48% miss  38.52%
+    photo.trace    hit   8.89% miss  91.11%
+  Block 16B
+    PDF.trace      hit  19.60% miss  80.40%
+    game.trace     hit  24.46% miss  75.54%
+    office.trace   hit  56.04% miss  43.96%
+    photo.trace    hit   7.77% miss  92.23%
+  Block 32B
+    PDF.trace      hit  10.68% miss  89.32%
+    game.trace     hit  14.96% miss  85.04%
+    office.trace   hit  48.88% miss  51.12%
+    photo.trace    hit   5.23% miss  94.77%
+  Block 64B
+    PDF.trace      hit   2.45% miss  97.55%
+    game.trace     hit   4.27% miss  95.73%
+    office.trace   hit  35.26% miss  64.74%
+    photo.trace    hit   1.27% miss  98.73%
+  Block 128B
+    PDF.trace      hit  19.57% miss  80.43%
+    game.trace     hit  25.72% miss  74.28%
+    office.trace   hit  45.05% miss  54.95%
+    photo.trace    hit  45.41% miss  54.59%
+  Block 256B
+    PDF.trace      hit  29.91% miss  70.09%
+    game.trace     hit  38.52% miss  61.48%
+    office.trace   hit  50.35% miss  49.65%
+    photo.trace    hit  68.86% miss  31.14%
+
+== Victim Cache on DM ==
+  DM + Victim(4)
+    PDF.trace      hit  11.37% miss  88.63% victim   0.1%
+    game.trace     hit  14.44% miss  85.56% victim   0.1%
+    office.trace   hit  38.45% miss  61.55% victim   0.5%
+    photo.trace    hit   8.41% miss  91.59% victim   0.1%
+  DM + Victim(8)
+    PDF.trace      hit  11.38% miss  88.62% victim   0.1%
+    game.trace     hit  14.47% miss  85.53% victim   0.3%
+    office.trace   hit  38.73% miss  61.27% victim   1.2%
+    photo.trace    hit   8.42% miss  91.58% victim   0.1%
+  DM + Victim(16)
+    PDF.trace      hit  11.39% miss  88.61% victim   0.2%
+    game.trace     hit  14.51% miss  85.49% victim   0.6%
+    office.trace   hit  39.45% miss  60.55% victim   3.0%
+    photo.trace    hit   8.43% miss  91.57% victim   0.2%
+  DM + Victim(32)
+    PDF.trace      hit  11.42% miss  88.58% victim   0.5%
+    game.trace     hit  14.57% miss  85.43% victim   1.0%
+    office.trace   hit  40.25% miss  59.75% victim   5.0%
+    photo.trace    hit   8.44% miss  91.56% victim   0.3%
+
+== MRU Prediction ==
+  MRU 2-way
+    PDF.trace      hit  12.45% miss  87.55% first  31.71% non-first  68.29%
+    game.trace     hit  17.01% miss  82.99% first  31.71% non-first  68.29%
+    office.trace   hit  46.12% miss  53.88% first  10.16% non-first  89.84%
+    photo.trace    hit   6.85% miss  93.15% first  26.26% non-first  73.74%
+  MRU 4-way
+    PDF.trace      hit   9.90% miss  90.10% first  17.66% non-first  82.34%
+    game.trace     hit  16.56% miss  83.44% first  16.18% non-first  83.82%
+    office.trace   hit  43.79% miss  56.21% first   5.89% non-first  94.11%
+    photo.trace    hit   5.20% miss  94.80% first  28.02% non-first  71.98%
+  MRU 8-way
+    PDF.trace      hit   9.16% miss  90.84% first  15.18% non-first  84.82%
+    game.trace     hit  16.67% miss  83.33% first  12.87% non-first  87.13%
+    office.trace   hit  39.99% miss  60.01% first   5.06% non-first  94.94%
+    photo.trace    hit   4.67% miss  95.33% first  28.96% non-first  71.04%
+  MRU 16-way
+    PDF.trace      hit   9.34% miss  90.66% first  14.79% non-first  85.21%
+    game.trace     hit  16.76% miss  83.24% first  12.32% non-first  87.68%
+    office.trace   hit  35.73% miss  64.27% first   5.04% non-first  94.96%
+    photo.trace    hit   3.82% miss  96.18% first  33.10% non-first  66.90%
+
+== Multi-column Prediction ==
+  Multi-Column 2-way
+    PDF.trace      hit  12.70% miss  87.30% first  31.33% non-first  68.67% avg-search 0.82
+    game.trace     hit  17.34% miss  82.66% first  31.50% non-first  68.50% avg-search 0.84
+    office.trace   hit  46.58% miss  53.42% first  10.08% non-first  89.92% avg-search 1.08
+    photo.trace    hit   9.33% miss  90.67% first  20.98% non-first  79.02% avg-search 0.88
+  Multi-Column 4-way
+    PDF.trace      hit  11.25% miss  88.75% first  16.71% non-first  83.29% avg-search 1.32
+    game.trace     hit  17.15% miss  82.85% first  16.52% non-first  83.48% avg-search 1.36
+    office.trace   hit  48.54% miss  51.46% first   5.41% non-first  94.59% avg-search 1.51
+    photo.trace    hit   7.24% miss  92.76% first  21.65% non-first  78.35% avg-search 1.29
+  Multi-Column 8-way
+    PDF.trace      hit  11.07% miss  88.93% first  13.73% non-first  86.27% avg-search 1.58
+    game.trace     hit  18.43% miss  81.57% first  12.47% non-first  87.53% avg-search 1.71
+    office.trace   hit  50.36% miss  49.64% first   3.99% non-first  96.01% avg-search 1.85
+    photo.trace    hit   6.83% miss  93.17% first  21.23% non-first  78.77% avg-search 1.45
+  Multi-Column 16-way
+    PDF.trace      hit  11.33% miss  88.67% first  12.86% non-first  87.14% avg-search 1.71
+    game.trace     hit  18.69% miss  81.31% first  11.75% non-first  88.25% avg-search 1.88
+    office.trace   hit  51.92% miss  48.08% first   3.44% non-first  96.56% avg-search 2.00
+    photo.trace    hit   6.49% miss  93.51% first  21.25% non-first  78.75% avg-search 1.54

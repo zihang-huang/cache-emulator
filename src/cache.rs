@@ -143,7 +143,6 @@ impl Cache {
     pub fn new(config: CacheConfig) -> Self {
         let num_sets = config.num_sets();
         let ways = config.associativity.max(1);
-        // Pre-build an empty set for every index; None entries represent invalid lines.
         let sets = (0..num_sets)
             .map(|_| vec![None; ways])
             .collect::<Vec<_>>();
@@ -192,10 +191,10 @@ impl Cache {
         // Capture what the predictor believes before mutate the state.
         let observation = self.observe_prediction(set_index, block_address);
 
-        if let Some(way) = self.touch_if_hit(set_index, tag) {
+        if let Some((way, is_first_hit)) = self.touch_if_hit(set_index, tag) {
             stats.hits += 1;
             self.update_multi_column_on_hit(set_index, block_address, way);
-            self.record_prediction(&observation, Some(way), stats);
+            self.record_prediction(&observation, Some((way, is_first_hit)), stats);
             self.next_stamp += 1;
             return;
         }
@@ -216,6 +215,12 @@ impl Cache {
                     victim.insert(evicted_line, self.next_stamp);
                 }
             }
+            if let Some(line) = self.sets[set_index]
+                .get_mut(way)
+                .and_then(|slot| slot.as_mut())
+            {
+                line.mark_hit();
+            }
             self.update_multi_column_on_hit(set_index, block_address, way);
             stats.hits += 1;
             stats.victim_hits += 1;
@@ -228,7 +233,6 @@ impl Cache {
                     victim.insert(evicted_line, self.next_stamp);
                 }
             }
-            self.update_multi_column_on_hit(set_index, block_address, way);
             stats.misses += 1;
         }
 
@@ -259,29 +263,29 @@ impl Cache {
     fn record_prediction(
         &self,
         observation: &PredictionObservation,
-        actual_way: Option<usize>,
+        actual: Option<(usize, bool)>,
         stats: &mut CacheStats,
     ) {
         let pred_stats = match stats.prediction.as_mut() {
             Some(stats) => stats,
             None => return,
         };
-        let Some(actual_way) = actual_way else {
+        let Some((actual_way, is_first_hit)) = actual else {
             return;
         };
         pred_stats.total_hits_observed += 1;
+        if is_first_hit {
+            pred_stats.first_hits += 1;
+        } else {
+            pred_stats.non_first_hits += 1;
+        }
         match observation {
-            PredictionObservation::None => pred_stats.non_first_hits += 1,
+            PredictionObservation::None => {}
             PredictionObservation::Mru { predicted } => {
-                if predicted == &Some(actual_way) {
-                    pred_stats.first_hits += 1;
-                } else {
-                    pred_stats.non_first_hits += 1;
-                }
+                let _ = predicted;
             }
             PredictionObservation::MultiColumn { bits } => {
                 if *bits == 0 {
-                    pred_stats.non_first_hits += 1;
                     pred_stats.bit_vector_observations += 1;
                     return;
                 }
@@ -292,14 +296,8 @@ impl Cache {
                     rank = Some(before.count_ones() + 1);
                 }
                 if let Some(rank) = rank {
-                    if rank == 1 {
-                        pred_stats.first_hits += 1;
-                    } else {
-                        pred_stats.non_first_hits += 1;
-                    }
                     pred_stats.bit_vector_search_total += rank as u64;
                 } else {
-                    pred_stats.non_first_hits += 1;
                     pred_stats.bit_vector_search_total += bits.count_ones() as u64;
                 }
                 pred_stats.bit_vector_observations += 1;
@@ -307,14 +305,15 @@ impl Cache {
         }
     }
 
-    fn touch_if_hit(&mut self, set_index: usize, tag: u64) -> Option<usize> {
+    fn touch_if_hit(&mut self, set_index: usize, tag: u64) -> Option<(usize, bool)> {
         let set = &mut self.sets[set_index];
         for (way, slot) in set.iter_mut().enumerate() {
             if let Some(line) = slot {
                 if line.tag == tag {
                     // Refresh the LRU stamp when see a hit.
+                    let is_first_hit = line.mark_hit();
                     line.stamp = self.next_stamp;
-                    return Some(way);
+                    return Some((way, is_first_hit));
                 }
             }
         }
@@ -326,19 +325,62 @@ impl Cache {
         set_index: usize,
         mut line: CacheLine,
     ) -> (usize, Option<(CacheLine, usize)>) {
-        let set = &mut self.sets[set_index];
-        if let Some((idx, slot)) = set.iter_mut().enumerate().find(|(_, slot)| slot.is_none()) {
+        // Check for empty slots first
+        if let Some((idx, slot)) = self.sets[set_index]
+            .iter_mut()
+            .enumerate()
+            .find(|(_, slot)| slot.is_none())
+        {
             line.stamp = self.next_stamp;
             *slot = Some(line);
             return (idx, None);
         }
-        let (idx, _) = set
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, slot)| slot.as_ref().map(|line| line.stamp).unwrap_or(u64::MIN))
-            .unwrap();
+
+        let idx = self.find_victim_index(set_index);
+        
+        // For MRU strategy, we implement LIP (LRU Insertion Policy).
+        // We reuse the victim's stamp so the new line stays at the LRU position.
+        if self.prediction_mode == PredictionStrategy::Mru {
+            if let Some(victim) = &self.sets[set_index][idx] {
+                line.stamp = victim.stamp;
+            }
+        }
+
+        let set = &mut self.sets[set_index];
         let evicted = set[idx].replace(line).unwrap();
         (idx, Some((evicted, idx)))
+    }
+
+    fn find_victim_index(&self, set_index: usize) -> usize {
+        let set = &self.sets[set_index];
+        match self.prediction_mode {
+            PredictionStrategy::Mru => set
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, slot)| slot.as_ref().map(|line| line.stamp).unwrap_or(u64::MIN))
+                .map(|(idx, _)| idx)
+                .unwrap(),
+            PredictionStrategy::MultiColumn => {
+                let predictor = self.multi_predictor.as_ref().unwrap();
+                set.iter()
+                    .enumerate()
+                    .map(|(way, slot)| {
+                        let line = slot.as_ref().unwrap();
+                        let bits = predictor.observe(set_index, line.block_address);
+                        let is_hot = (bits >> way) & 1;
+                        (is_hot, line.stamp, way)
+                    })
+                    .min()
+                    .map(|(_, _, way)| way)
+                    .unwrap()
+            }
+            PredictionStrategy::None => set
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, slot)| slot.as_ref().map(|line| line.stamp).unwrap_or(u64::MIN))
+                .map(|(idx, _)| idx)
+                .unwrap(),
+        }
     }
 
     fn update_multi_column_on_hit(&mut self, set_index: usize, block_address: u64, way: usize) {
@@ -375,6 +417,7 @@ struct CacheLine {
     tag: u64,
     block_address: u64,
     stamp: u64,
+    has_received_hit: bool,
 }
 
 impl CacheLine {
@@ -383,7 +426,16 @@ impl CacheLine {
             tag,
             block_address,
             stamp,
+            has_received_hit: false,
         }
+    }
+
+    /// Marks the cache line as hit once it is accessed.
+    /// Returns true if this is the first hit observed since the line was inserted.
+    fn mark_hit(&mut self) -> bool {
+        let is_first_hit = !self.has_received_hit;
+        self.has_received_hit = true;
+        is_first_hit
     }
 }
 
